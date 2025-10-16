@@ -10,7 +10,7 @@ ln -sf $script_dir/third-party/cutlass/include/cute deep_gemm/include
 # Remove old dist file, build files, and build
 rm -rf build dist
 rm -rf *.egg-info
-python setup.py build
+uv run python setup.py build
 
 # Find the .so file in build directory and create symlink in current directory
 so_file=$(find build -name "*.so" -type f | head -n 1)

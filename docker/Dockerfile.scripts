@@ -1,0 +1,3 @@
+FROM colfax/infer:deepgemm
+
+COPY . /workspace/infer

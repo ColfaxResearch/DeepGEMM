@@ -1,0 +1,36 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: run-deepgemm
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      runtimeClassName: nvidia
+      tolerations:
+        - key: nvidia.com/gpu
+          value: "true"
+          effect: NoSchedule
+      containers:
+        - name: run-deepgemm-container
+          image: colfax/infer:deepgemm-pvk
+          imagePullPolicy: Always
+          command: ["/bin/bash"]
+          args:
+            - -c
+            - |
+              echo "$(pwd)"
+              ls -la
+              ls -la docker/
+              chmod u+x docker/run-deepgemm.sh
+              docker/run-deepgemm.sh
+          resources:
+            requests:
+              nvidia.com/gpu: 1
+            limits:
+              nvidia.com/gpu: 1
+          env:
+            - name: CUDA_VISIBLE_DEVICES
+              value: "0"
+            - name: TORCH_CUDA_ARCH_LIST
+              value: "10.0a"

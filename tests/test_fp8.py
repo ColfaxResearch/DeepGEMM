@@ -17,33 +17,35 @@ from generators import (
 
 def my_test_gemm() -> None:
     print("Testing GEMM:")
-    kernel_types = [KernelType.Kernel1D1D, KernelType.Kernel1D2D]
-    mnks = [(8192, 8192, 8192), (256, 16384, 16384), (8192, 40960, 8192), (16384, 40960, 16384)]
-    use_bf16s = True, False
+    kernel_types = [KernelType.Kernel1D1D, KernelType.Kernel1D2D, KernelType.KernelNoSF]
+    mnks = [(512, 512, 512), (8192, 8192, 8192), (256, 16384, 16384), (8192, 40960, 8192), (16384, 40960, 16384),
+            (8192, 4096, 1024), (512, 4*512, 512), (8192, 4*8192, 8192), (8192, 4*4096, 1024)]
     major_a = MajorTypeAB.KMajor
     major_b = MajorTypeAB.KMajor
     accumulate = False
     out_dtype = torch.bfloat16
     for kernel_type in kernel_types:
         for m, n, k in mnks:
-            for use_bf16 in use_bf16s:
-                major_opt  = 'N' if major_a.is_k_major() else 'T'
-                major_opt += 'T' if major_b.is_k_major() else 'N'
-                if out_dtype == torch.float:
-                    out_opt = 'FP32'
-                else:
-                    out_opt = 'BF16'
-                acc_opt    = f'acc={int(accumulate)}'
-                kernel_opt = f'1D1D' if kernel_type.is_1d1d() else '1D2D'
-                use_ue8m0 = get_ue8m0_usage(kernel_type)
-                disable_ue8m0_cast = not use_ue8m0
-                recipe = (1, 1, 128) if kernel_type.is_1d1d() and accumulate else None
-                a, b, c, d, ref_d = generate_normal(m, n, k, major_a, major_b, accumulate, out_dtype, kernel_type, use_ue8m0=use_ue8m0)
-                t = bench_kineto(lambda: deep_gemm.fp8_gemm_nt(a, b, d, c=c, disable_ue8m0_cast=disable_ue8m0_cast, recipe=recipe),
-                                'fp8_gemm', suppress_kineto_output=False)
-                print(f' > Perf (m={m:6}, n={n:6}, k={k:6}, {kernel_opt}, layout={major_opt}, {out_opt}, {acc_opt}): '
-                    f'{t * 1e6:4.0f} us | {2 * m * n * k / t / 1e12:4.0f} TFLOPS | '
-                    f'{(count_bytes(a, b, d) + count_bytes(c) * int(accumulate)) / 1e9 / t:4.0f} GB/s')
+            use_bf16 = kernel_type.is_nosf()
+            major_opt  = 'N' if major_a.is_k_major() else 'T'
+            major_opt += 'T' if major_b.is_k_major() else 'N'
+            if out_dtype == torch.float:
+                out_opt = 'FP32'
+            else:
+                out_opt = 'BF16'
+            acc_opt    = f'acc={int(accumulate)}'
+            kernel_opt = 'BF16' if use_bf16 else ('FP8_1D1D' if kernel_type.is_1d1d() else 'FP8_1D2D')
+            use_ue8m0 = get_ue8m0_usage(kernel_type)
+            disable_ue8m0_cast = not use_ue8m0
+            recipe = (1, 1, 128) if kernel_type.is_1d1d() and accumulate else None
+            a, b, c, d, ref_d = generate_normal(m, n, k, major_a, major_b, accumulate, out_dtype, kernel_type, use_ue8m0=use_ue8m0, use_bf16=use_bf16)
+            if not use_bf16:
+                t = bench_kineto(lambda: deep_gemm.fp8_gemm_nt(a, b, d, c=c, disable_ue8m0_cast=disable_ue8m0_cast, recipe=recipe), 'fp8_gemm', suppress_kineto_output=True)
+            else:
+                t = bench_kineto(lambda: deep_gemm.bf16_gemm_nt(a, b, d, c=c), 'bf16_gemm', suppress_kineto_output=True)
+            print(f' > Perf (m={m:6}, n={n:6}, k={k:6}, {kernel_opt}, layout={major_opt}, {out_opt}, {acc_opt}): '
+                f'{t * 1e6:4.0f} us | {2 * m * n * k / t / 1e12:4.0f} TFLOPS | '
+                f'{(count_bytes(a, b, d) + count_bytes(c) * int(accumulate)) / 1e9 / t:4.0f} GB/s')
 
 
 def test_gemm() -> None:
